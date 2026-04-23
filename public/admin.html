@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - ColEvent</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+    <script>
+        // ===== GLOBAL FUNCTIONS — synchronous, before anything else =====
+        function switchTab(tabId, btn) {
+            document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
+            var el = document.getElementById(tabId);
+            if (el) el.classList.add('active');
+            document.querySelectorAll('.sidebar .tab-btn').forEach(function(b) { b.classList.remove('active'); });
+            if (btn) btn.classList.add('active');
+        }
+        function openModal(id) { var el = document.getElementById(id); if (el) el.classList.add('active'); }
+        function closeModal(id) { var el = document.getElementById(id); if (el) el.classList.remove('active'); }
+        function loadStats() { if (window._loadStats) window._loadStats(); }
+        function loadEvents() { if (window._loadEvents) window._loadEvents(); }
+        function loadAllRegistrations() { if (window._loadAllRegistrations) window._loadAllRegistrations(); }
+        function loadNotifications() { if (window._loadNotifications) window._loadNotifications(); }
+        function deleteEvent(id) { if (window._deleteEvent) window._deleteEvent(id); }
+        function deleteNotif(id) { if (window._deleteNotif) window._deleteNotif(id); }
+        function editEvent(id) { if (window._editEvent) window._editEvent(id); }
+    </script>
+
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand"><span>⚡</span> ColEvent Admin</div>
+            <div class="nav-right">
+                <span class="nav-user" id="adminName"></span>
+                <button class="btn btn-outline btn-sm" id="logoutBtn">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="dashboard-layout">
+        <div class="sidebar">
+            <div class="sidebar-header"><h3>Admin Panel</h3></div>
+            <button class="tab-btn active" onclick="switchTab('dashboard', this); loadStats();">
+                <span class="tab-icon">📊</span> Dashboard
+            </button>
+            <button class="tab-btn" onclick="switchTab('manage-events', this); loadEvents();">
+                <span class="tab-icon">📅</span> Events
+            </button>
+            <button class="tab-btn" onclick="switchTab('registrations-tab', this); loadAllRegistrations();">
+                <span class="tab-icon">🎟️</span> Registrations
+            </button>
+            <button class="tab-btn" onclick="switchTab('qr-scanner', this);">
+                <span class="tab-icon">📷</span> QR Scanner
+            </button>
+            <button class="tab-btn" onclick="switchTab('notifications', this); loadNotifications();">
+                <span class="tab-icon">🔔</span> Notifications
+            </button>
+        </div>
+
+        <div class="main-content">
+
+            <!-- Dashboard Stats -->
+            <div id="dashboard" class="tab-content active">
+                <div class="section-header"><h2>Dashboard Overview</h2></div>
+                <div class="grid-3" id="statsGrid">
+                    <div class="loading-overlay"><span class="spinner"></span> Loading stats...</div>
+                </div>
+            </div>
+
+            <!-- Manage Events -->
+            <div id="manage-events" class="tab-content">
+                <div class="section-header">
+                    <h2>Manage Events</h2>
+                    <button class="btn btn-primary" onclick="openModal('addEventModal')">+ Add Event</button>
+                </div>
+                <div id="adminEventsList">
+                    <div class="loading-overlay"><span class="spinner"></span> Loading events...</div>
+                </div>
+            </div>
+
+            <!-- Registrations -->
+            <div id="registrations-tab" class="tab-content">
+                <div class="section-header"><h2>All Registrations</h2></div>
+                <div id="allRegistrationsList">
+                    <div class="loading-overlay"><span class="spinner"></span> Loading registrations...</div>
+                </div>
+            </div>
+
+            <!-- QR Scanner -->
+            <div id="qr-scanner" class="tab-content">
+                <div class="section-header"><h2>QR Ticket Scanner</h2></div>
+                <div class="card" style="max-width:600px;">
+                    <div id="reader" style="width:100%; margin-bottom:1rem;"></div>
+                    <button class="btn btn-primary btn-block" id="startScanBtn" onclick="startScanner()">📷 Start Camera Scanner</button>
+                    <div style="margin:1.5rem 0; text-align:center; color:var(--text-muted);">— or enter manually —</div>
+                    <div style="display:flex; gap:0.75rem;">
+                        <input type="text" id="manualQRInput" placeholder="Paste QR data here..." class="form-input" style="flex:1;">
+                        <button class="btn btn-primary" onclick="verifyManualQR()">Verify</button>
+                    </div>
+                    <div id="scanResult" style="margin-top:1.5rem;"></div>
+                </div>
+            </div>
+
+            <!-- Notifications -->
+            <div id="notifications" class="tab-content">
+                <div class="section-header">
+                    <h2>Notifications</h2>
+                    <button class="btn btn-primary" onclick="openModal('addNotifModal')">+ Add Notification</button>
+                </div>
+                <div class="card" style="padding:0;">
+                    <div id="adminNotificationsList">
+                        <div class="loading-overlay"><span class="spinner"></span> Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Event Modal -->
+    <div id="addEventModal" class="modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3>📅 Add New Event</h3>
+                <button class="close-modal" onclick="closeModal('addEventModal')">×</button>
+            </div>
+            <div class="modal-body">
+                <form id="addEventForm">
+                    <div class="auth-form-floating"><input type="text" id="ae_title" placeholder=" " required><label>Event Title</label></div>
+                    <div class="auth-form-floating"><textarea id="ae_desc" placeholder=" " required rows="3"></textarea><label>Description</label></div>
+                    <div style="display:flex;gap:10px;">
+                        <div class="auth-form-floating" style="flex:1;"><input type="datetime-local" id="ae_eventDate" required placeholder=" "><label>Event Date</label></div>
+                        <div class="auth-form-floating" style="flex:1;"><input type="datetime-local" id="ae_dueDate" required placeholder=" "><label>Registration Due</label></div>
+                    </div>
+                    <div style="display:flex;gap:10px;">
+                        <div class="auth-form-floating" style="flex:1;"><input type="number" id="ae_seats" placeholder=" " required min="1"><label>Total Seats</label></div>
+                        <div class="auth-form-floating" style="flex:1;"><input type="number" id="ae_fee" placeholder=" " required min="0" step="0.01"><label>Entry Fee (₹, 0 for free)</label></div>
+                    </div>
+                    <div class="auth-form-floating"><input type="url" id="ae_image" placeholder=" "><label>Banner Image URL (optional)</label></div>
+                    <button type="submit" class="btn btn-primary btn-block">Create Event</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Event Modal -->
+    <div id="editEventModal" class="modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3>✏️ Edit Event</h3>
+                <button class="close-modal" onclick="closeModal('editEventModal')">×</button>
+            </div>
+            <div class="modal-body">
+                <form id="editEventForm">
+                    <input type="hidden" id="edit_eventId">
+                    <div class="auth-form-floating"><input type="text" id="ee_title" placeholder=" " required><label>Event Title</label></div>
+                    <div class="auth-form-floating"><textarea id="ee_desc" placeholder=" " required rows="3"></textarea><label>Description</label></div>
+                    <div style="display:flex;gap:10px;">
+                        <div class="auth-form-floating" style="flex:1;"><input type="datetime-local" id="ee_eventDate" required placeholder=" "><label>Event Date</label></div>
+                        <div class="auth-form-floating" style="flex:1;"><input type="datetime-local" id="ee_dueDate" required placeholder=" "><label>Registration Due</label></div>
+                    </div>
+                    <div style="display:flex;gap:10px;">
+                        <div class="auth-form-floating" style="flex:1;"><input type="number" id="ee_seats" placeholder=" " required min="1"><label>Total Seats</label></div>
+                        <div class="auth-form-floating" style="flex:1;"><input type="number" id="ee_fee" placeholder=" " required min="0" step="0.01"><label>Entry Fee (₹)</label></div>
+                    </div>
+                    <div class="auth-form-floating"><input type="url" id="ee_image" placeholder=" "><label>Banner Image URL (optional)</label></div>
+                    <button type="submit" class="btn btn-primary btn-block">Update Event</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Notification Modal -->
+    <div id="addNotifModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🔔 Add Notification</h3>
+                <button class="close-modal" onclick="closeModal('addNotifModal')">×</button>
+            </div>
+            <div class="modal-body">
+                <form id="addNotifForm">
+                    <div class="auth-form-floating"><input type="text" id="an_title" placeholder=" " required><label>Title</label></div>
+                    <div class="auth-form-floating"><textarea id="an_message" placeholder=" " required rows="3"></textarea><label>Message</label></div>
+                    <div class="auth-form-floating">
+                        <select id="an_type" required>
+                            <option value="info">Info 🔔</option>
+                            <option value="success">Success ✅</option>
+                            <option value="warning">Warning ⚠️</option>
+                            <option value="error">Error ❌</option>
+                        </select>
+                        <label>Type</label>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Send Notification</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Html5-qrcode scanner library -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+    <!-- Sync stubs: available BEFORE async module loads -->
+    <script>
+        function switchTab(tabId, btn) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.getElementById(tabId) && document.getElementById(tabId).classList.add('active');
+            document.querySelectorAll('.sidebar .tab-btn').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+        }
+        // switchTab already global
+        // openModal already global
+        // closeModal already global
+    </script>
+
+    <script type="module">
+        import { db } from '/js/firebase-config.js';
+        import { Auth } from '/js/auth.js';
+        import { showToast, formatDate, formatCurrency, timeAgo, escapeHtml, openModal, closeModal, switchTab } from '/js/utils.js';
+        import {
+            collection, getDocs, getDoc, doc, addDoc, updateDoc, deleteDoc,
+            query, orderBy, where, serverTimestamp
+        } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+        // Override stubs with full module versions
+        window.showToast      = showToast;
+        // openModal already global
+        // closeModal already global
+        // switchTab already global
+        window.escapeHtml     = escapeHtml;
+        window.formatDate     = formatDate;
+        window.formatCurrency = formatCurrency;
+        window.timeAgo        = timeAgo;
+
+        const user = Auth.requireAuth('admin');
+        if (user) document.getElementById('adminName').textContent = user.name;
+        document.getElementById('logoutBtn').onclick = () => Auth.logout();
+
+        let html5QrCode = null;
+
+        // ========== STATS ==========
+        window._loadStats = async function() {
+            const grid = document.getElementById('statsGrid');
+            grid.innerHTML = '<div class="loading-overlay"><span class="spinner"></span> Loading...</div>';
+            try {
+                const [eventsSnap, regsSnap, usersSnap] = await Promise.all([
+                    getDocs(collection(db, 'events')),
+                    getDocs(collection(db, 'registrations')),
+                    getDocs(collection(db, 'users'))
+                ]);
+                const studentCount = usersSnap.docs.filter(d => d.data().role === 'student').length;
+
+                let totalRevenue = 0;
+                let ticketsUsed = 0;
+                regsSnap.forEach(d => {
+                    const r = d.data();
+                    if (r.paymentStatus === 'paid' || r.paymentStatus === 'free') totalRevenue += (r.amount || 0);
+                    if (r.qrUsed) ticketsUsed++;
+                });
+
+                grid.innerHTML = `
+                    <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-value">${eventsSnap.size}</div><div class="stat-label">Total Events</div></div>
+                    <div class="stat-card"><div class="stat-icon">🎟️</div><div class="stat-value">${regsSnap.size}</div><div class="stat-label">Registrations</div></div>
+                    <div class="stat-card"><div class="stat-icon">🎓</div><div class="stat-value">${studentCount}</div><div class="stat-label">Students</div></div>
+                    <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-value">${formatCurrency(totalRevenue)}</div><div class="stat-label">Total Revenue</div></div>
+                    <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-value">${ticketsUsed}</div><div class="stat-label">Tickets Scanned</div></div>
+                `;
+            } catch (e) {
+                grid.innerHTML = '<p style="color:var(--accent-danger);">Failed to load stats.</p>';
+            }
+        };
+
+        // ========== LOAD EVENTS ==========
+        window._loadEvents = async function() {
+            const list = document.getElementById('adminEventsList');
+            list.innerHTML = '<div class="loading-overlay"><span class="spinner"></span> Loading...</div>';
+            try {
+                const snap = await getDocs(collection(db, 'events'));
+                if (snap.empty) {
+                    list.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📅</div><h3>No events yet</h3></div>';
+                    return;
+                }
+                list.innerHTML = '';
+                snap.forEach(evDoc => {
+                    const ev = { id: evDoc.id, ...evDoc.data() };
+                    list.innerHTML += `
+                        <div class="event-card" style="margin-bottom:1rem;">
+                            <div class="event-content">
+                                <div class="event-title">${escapeHtml(ev.title)}</div>
+                                <div class="event-desc">${escapeHtml(ev.description)}</div>
+                                <div class="event-meta">
+                                    <span>📅 ${formatDate(ev.eventDate)}</span>
+                                    <span>💺 ${ev.seatsLeft}/${ev.totalSeats} seats left</span>
+                                    <span>${ev.entryFee > 0 ? formatCurrency(ev.entryFee) : 'Free'}</span>
+                                </div>
+                                <div style="display:flex;gap:0.5rem;margin-top:1rem;">
+                                    <button class="btn btn-outline btn-sm" onclick="openEditModal('${ev.id}')">✏️ Edit</button>
+                                    <button class="btn btn-danger btn-sm" onclick="deleteEvent('${ev.id}')">🗑️ Delete</button>
+                                </div>
+                            </div>
+                        </div>`;
+                });
+            } catch (e) {
+                list.innerHTML = '<p style="color:var(--accent-danger);">Failed to load events.</p>';
+            }
+        };
+
+        // ========== ADD EVENT ==========
+        document.getElementById('addEventForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type=submit]');
+            btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Creating...';
+            try {
+                const totalSeats = parseInt(document.getElementById('ae_seats').value);
+                await addDoc(collection(db, 'events'), {
+                    title: document.getElementById('ae_title').value,
+                    description: document.getElementById('ae_desc').value,
+                    eventDate: new Date(document.getElementById('ae_eventDate').value),
+                    dueDate: new Date(document.getElementById('ae_dueDate').value),
+                    startDate: new Date(),
+                    totalSeats,
+                    seatsLeft: totalSeats,
+                    entryFee: parseFloat(document.getElementById('ae_fee').value) || 0,
+                    imageUrl: document.getElementById('ae_image').value || '',
+                    createdBy: user.uid,
+                    createdAt: serverTimestamp()
+                });
+                // Add notification
+                await addDoc(collection(db, 'notifications'), {
+                    title: `New Event: ${document.getElementById('ae_title').value}`,
+                    message: `Registrations are now open! Total seats: ${totalSeats}`,
+                    type: 'info',
+                    createdAt: serverTimestamp()
+                });
+                showToast('Event created! 🎉', 'success');
+                closeModal('addEventModal');
+                e.target.reset();
+                loadEvents();
+            } catch (err) {
+                showToast(err.message, 'error');
+            } finally {
+                btn.disabled = false; btn.innerHTML = 'Create Event';
+            }
+        });
+
+        // ========== EDIT EVENT ==========
+        window.openEditModal = async function(eventId) {
+            try {
+                const evDoc = await getDoc(doc(db, 'events', eventId));
+                if (!evDoc.exists()) return;
+                const ev = evDoc.data();
+
+                document.getElementById('edit_eventId').value = eventId;
+                document.getElementById('ee_title').value = ev.title;
+                document.getElementById('ee_desc').value = ev.description;
+                document.getElementById('ee_seats').value = ev.totalSeats;
+                document.getElementById('ee_fee').value = ev.entryFee || 0;
+                document.getElementById('ee_image').value = ev.imageUrl || '';
+
+                const toLocal = (d) => {
+                    const dt = d?.toDate ? d.toDate() : new Date(d);
+                    const offset = dt.getTimezoneOffset();
+                    const local = new Date(dt.getTime() - offset * 60000);
+                    return local.toISOString().slice(0, 16);
+                };
+                document.getElementById('ee_eventDate').value = toLocal(ev.eventDate);
+                document.getElementById('ee_dueDate').value = toLocal(ev.dueDate);
+
+                openModal('editEventModal');
+            } catch (err) {
+                showToast('Failed to load event', 'error');
+            }
+        };
+
+        document.getElementById('editEventForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const eventId = document.getElementById('edit_eventId').value;
+            const btn = e.target.querySelector('button[type=submit]');
+            btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Updating...';
+            try {
+                const evDoc = await getDoc(doc(db, 'events', eventId));
+                const ev = evDoc.data();
+                const newTotal = parseInt(document.getElementById('ee_seats').value);
+                const seatsDiff = newTotal - ev.totalSeats;
+                const newSeatsLeft = Math.max(0, ev.seatsLeft + seatsDiff);
+
+                await updateDoc(doc(db, 'events', eventId), {
+                    title: document.getElementById('ee_title').value,
+                    description: document.getElementById('ee_desc').value,
+                    eventDate: new Date(document.getElementById('ee_eventDate').value),
+                    dueDate: new Date(document.getElementById('ee_dueDate').value),
+                    totalSeats: newTotal,
+                    seatsLeft: newSeatsLeft,
+                    entryFee: parseFloat(document.getElementById('ee_fee').value) || 0,
+                    imageUrl: document.getElementById('ee_image').value || ''
+                });
+                showToast('Event updated!', 'success');
+                closeModal('editEventModal');
+                loadEvents();
+            } catch (err) {
+                showToast(err.message, 'error');
+            } finally {
+                btn.disabled = false; btn.innerHTML = 'Update Event';
+            }
+        });
+
+        // ========== DELETE EVENT ==========
+        window._deleteEvent = async function(eventId) {
+            if (!confirm('Are you sure you want to delete this event? All registrations will remain.')) return;
+            try {
+                await deleteDoc(doc(db, 'events', eventId));
+                showToast('Event deleted', 'success');
+                loadEvents();
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        };
+
+        // ========== ALL REGISTRATIONS ==========
+        window._loadAllRegistrations = async function() {
+            const list = document.getElementById('allRegistrationsList');
+            list.innerHTML = '<div class="loading-overlay"><span class="spinner"></span> Loading...</div>';
+            try {
+                const snap = await getDocs(collection(db, 'registrations'));
+                if (snap.empty) {
+                    list.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🎟️</div><h3>No registrations yet</h3></div>';
+                    return;
+                }
+                list.innerHTML = `
+                    <div style="overflow-x:auto;">
+                    <table class="table" style="width:100%;border-collapse:collapse;">
+                    <thead><tr>
+                        <th style="padding:0.75rem;text-align:left;border-bottom:1px solid var(--border-color);">Student</th>
+                        <th style="padding:0.75rem;text-align:left;border-bottom:1px solid var(--border-color);">Event</th>
+                        <th style="padding:0.75rem;text-align:left;border-bottom:1px solid var(--border-color);">Amount</th>
+                        <th style="padding:0.75rem;text-align:left;border-bottom:1px solid var(--border-color);">Status</th>
+                        <th style="padding:0.75rem;text-align:left;border-bottom:1px solid var(--border-color);">QR Used</th>
+                        <th style="padding:0.75rem;text-align:left;border-bottom:1px solid var(--border-color);">Registered</th>
+                    </tr></thead>
+                    <tbody id="regTableBody"></tbody>
+                    </table></div>`;
+
+                const tbody = document.getElementById('regTableBody');
+                for (const regDoc of snap.docs) {
+                    const reg = regDoc.data();
+                    const evDoc = await getDoc(doc(db, 'events', reg.eventId));
+                    const evTitle = evDoc.exists() ? evDoc.data().title : 'Deleted Event';
+
+                    tbody.innerHTML += `<tr>
+                        <td style="padding:0.75rem;border-bottom:1px solid var(--border-color);">
+                            <strong>${escapeHtml(reg.studentName)}</strong><br>
+                            <small style="color:var(--text-secondary)">${escapeHtml(reg.studentEmail)}</small>
+                        </td>
+                        <td style="padding:0.75rem;border-bottom:1px solid var(--border-color);">${escapeHtml(evTitle)}</td>
+                        <td style="padding:0.75rem;border-bottom:1px solid var(--border-color);">${formatCurrency(reg.amount)}</td>
+                        <td style="padding:0.75rem;border-bottom:1px solid var(--border-color);">
+                            <span class="badge ${reg.paymentStatus === 'paid' ? 'badge-success' : 'badge-info'}">${reg.paymentStatus}</span>
+                        </td>
+                        <td style="padding:0.75rem;border-bottom:1px solid var(--border-color);">
+                            <span class="badge ${reg.qrUsed ? 'badge-warning' : 'badge-success'}">${reg.qrUsed ? 'Used' : 'Active'}</span>
+                        </td>
+                        <td style="padding:0.75rem;border-bottom:1px solid var(--border-color);">${reg.createdAt ? timeAgo(reg.createdAt) : 'Just now'}</td>
+                    </tr>`;
+                }
+            } catch (e) {
+                list.innerHTML = '<p style="color:var(--accent-danger);">Failed to load registrations.</p>';
+                console.error(e);
+            }
+        };
+
+        // ========== QR SCANNER ==========
+        window.startScanner = async function() {
+            const btn = document.getElementById('startScanBtn');
+            if (html5QrCode) {
+                try { await html5QrCode.stop(); } catch {}
+                html5QrCode = null;
+                btn.textContent = '📷 Start Camera Scanner';
+                return;
+            }
+
+            html5QrCode = new Html5Qrcode('reader');
+            try {
+                await html5QrCode.start(
+                    { facingMode: 'environment' },
+                    { fps: 10, qrbox: { width: 250, height: 250 } },
+                    async (decodedText) => {
+                        try { await html5QrCode.stop(); } catch {}
+                        html5QrCode = null;
+                        btn.textContent = '📷 Start Camera Scanner';
+                        await verifyQR(decodedText);
+                    },
+                    () => {}
+                );
+                btn.textContent = '⏹ Stop Scanner';
+            } catch (err) {
+                showToast('Camera access denied. Use manual entry.', 'error');
+                html5QrCode = null;
+            }
+        };
+
+        window.verifyManualQR = function() {
+            const val = document.getElementById('manualQRInput').value.trim();
+            if (!val) return showToast('Please enter QR data', 'warning');
+            verifyQR(val);
+        };
+
+        async function verifyQR(qrData) {
+            const resultDiv = document.getElementById('scanResult');
+            resultDiv.innerHTML = '<div class="loading-overlay"><span class="spinner"></span> Verifying...</div>';
+
+            try {
+                let payload;
+                try { payload = JSON.parse(atob(qrData)); }
+                catch { throw new Error('Invalid QR code format.'); }
+
+                const { r: regId, e: eventId, s: studentId } = payload;
+
+                const regRef = doc(db, 'registrations', regId);
+                const regDoc = await getDoc(regRef);
+
+                if (!regDoc.exists()) {
+                    resultDiv.innerHTML = `<div class="scan-result invalid"><h3>❌ Invalid Ticket</h3><p>Ticket not found in system.</p></div>`;
+                    return;
+                }
+
+                const reg = regDoc.data();
+
+                // Verify IDs match
+                if (reg.eventId !== eventId || reg.studentId !== studentId) {
+                    resultDiv.innerHTML = `<div class="scan-result invalid"><h3>❌ Ticket Mismatch</h3><p>QR data does not match registration.</p></div>`;
+                    return;
+                }
+
+                if (reg.qrUsed) {
+                    resultDiv.innerHTML = `<div class="scan-result invalid">
+                        <h3>❌ Duplicate Entry!</h3>
+                        <div class="scan-detail"><span class="scan-detail-label">Student</span><span class="scan-detail-value">${escapeHtml(reg.studentName)}</span></div>
+                        <div class="scan-detail"><span class="scan-detail-label">Used At</span><span class="scan-detail-value">${formatDate(reg.qrUsedAt)}</span></div>
+                    </div>`;
+                    showToast('Duplicate ticket! Entry denied.', 'error');
+                    return;
+                }
+
+                if (reg.paymentStatus !== 'paid' && reg.paymentStatus !== 'free') {
+                    resultDiv.innerHTML = `<div class="scan-result invalid"><h3>❌ Payment Incomplete</h3><p>Payment not confirmed for this ticket.</p></div>`;
+                    return;
+                }
+
+                // Get event details
+                const evDoc = await getDoc(doc(db, 'events', reg.eventId));
+                const ev = evDoc.exists() ? evDoc.data() : {};
+
+                // Mark as used
+                await updateDoc(regRef, { qrUsed: true, qrUsedAt: serverTimestamp() });
+
+                resultDiv.innerHTML = `
+                    <div class="scan-result valid">
+                        <h3>✅ Valid Ticket — Entry Granted</h3>
+                        <div class="scan-detail"><span class="scan-detail-label">Student</span><span class="scan-detail-value">${escapeHtml(reg.studentName)}</span></div>
+                        <div class="scan-detail"><span class="scan-detail-label">Email</span><span class="scan-detail-value">${escapeHtml(reg.studentEmail)}</span></div>
+                        <div class="scan-detail"><span class="scan-detail-label">Department</span><span class="scan-detail-value">${escapeHtml(reg.studentDept || 'N/A')}</span></div>
+                        <div class="scan-detail"><span class="scan-detail-label">Event</span><span class="scan-detail-value">${escapeHtml(ev.title || 'N/A')}</span></div>
+                        <div class="scan-detail"><span class="scan-detail-label">Payment</span><span class="scan-detail-value badge badge-success">${reg.paymentStatus}</span></div>
+                        <div class="scan-detail"><span class="scan-detail-label">Registered</span><span class="scan-detail-value">${formatDate(reg.createdAt)}</span></div>
+                    </div>`;
+                showToast('Ticket verified! Entry granted. ✅', 'success');
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="scan-result invalid"><h3>❌ Verification Failed</h3><p>${escapeHtml(error.message)}</p></div>`;
+                showToast('QR verification failed', 'error');
+            }
+        }
+
+        // ========== NOTIFICATIONS ==========
+        window._loadNotifications = async function() {
+            const list = document.getElementById('adminNotificationsList');
+            list.innerHTML = '<div class="loading-overlay"><span class="spinner"></span> Loading...</div>';
+            try {
+                const snap = await getDocs(collection(db, 'notifications'));
+                list.innerHTML = '';
+                if (snap.empty) {
+                    list.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔔</div><h3>No notifications</h3></div>';
+                    return;
+                }
+                snap.forEach(d => {
+                    const n = d.data();
+                    const typeIcons = { info: '🔔', warning: '⚠️', success: '✅', error: '❌' };
+                    list.innerHTML += `
+                        <div class="notification-item">
+                            <div class="notification-icon">${typeIcons[n.type] || '🔔'}</div>
+                            <div class="notification-content" style="flex:1;">
+                                <h4>${escapeHtml(n.title)}</h4>
+                                <p>${escapeHtml(n.message)}</p>
+                                <span class="notification-time">${n.createdAt ? timeAgo(n.createdAt) : 'Just now'}</span>
+                            </div>
+                            <button class="btn btn-danger btn-sm" onclick="deleteNotif('${d.id}')">🗑️</button>
+                        </div>`;
+                });
+            } catch (e) {
+                list.innerHTML = '<p style="color:var(--accent-danger);">Failed to load.</p>';
+            }
+        };
+
+        document.getElementById('addNotifForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type=submit]');
+            btn.disabled = true;
+            try {
+                await addDoc(collection(db, 'notifications'), {
+                    title: document.getElementById('an_title').value,
+                    message: document.getElementById('an_message').value,
+                    type: document.getElementById('an_type').value,
+                    createdAt: serverTimestamp()
+                });
+                showToast('Notification sent!', 'success');
+                closeModal('addNotifModal');
+                e.target.reset();
+                loadNotifications();
+            } catch (err) {
+                showToast(err.message, 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        window._deleteNotif = async function(id) {
+            try {
+                await deleteDoc(doc(db, 'notifications', id));
+                showToast('Notification deleted', 'success');
+                loadNotifications();
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        };
+
+        // Import serverTimestamp for inline use
+        window.serverTimestamp = serverTimestamp;
+
+        // Init
+        if (user) loadStats();
+    </script>
+</body>
+</html>

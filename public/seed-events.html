@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seed Events - ColEvent Admin</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 2rem; }
+        .seed-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-xl); padding: 2.5rem; max-width: 560px; width: 100%; text-align: center; }
+        .seed-card h1 { font-size: 1.75rem; margin-bottom: 0.5rem; background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .seed-card p { color: var(--text-secondary); margin-bottom: 2rem; }
+        #log { text-align: left; background: rgba(0,0,0,0.3); border-radius: var(--radius-md); padding: 1rem; max-height: 320px; overflow-y: auto; font-size: 0.82rem; font-family: monospace; margin-top: 1.5rem; display: none; }
+        .log-line { padding: 2px 0; }
+        .log-ok  { color: #10b981; }
+        .log-err { color: #ef4444; }
+        .log-inf { color: #94a3b8; }
+        .progress-bar { height: 6px; background: var(--bg-glass); border-radius: 999px; margin: 1rem 0; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--gradient-primary); border-radius: 999px; transition: width 0.3s ease; width: 0%; }
+    </style>
+</head>
+<body>
+<div class="seed-card">
+    <div style="font-size:3rem; margin-bottom:1rem;">🌱</div>
+    <h1>Seed 28 Events</h1>
+    <p>This will add 28 pre-built college events to your Firestore database. Only run this once. You must be logged in as admin.</p>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <button class="btn btn-primary btn-block" id="seedBtn" onclick="startSeed()" style="font-size:1rem; padding:0.9rem;">
+        🚀 Seed All Events Now
+    </button>
+    <div id="log"></div>
+    <div id="doneMsg" style="display:none; margin-top:1.5rem;">
+        <div style="font-size:2.5rem;">🎉</div>
+        <h3 style="color:var(--accent-success); margin:0.5rem 0;">All events added!</h3>
+        <p style="color:var(--text-secondary); margin-bottom:1.5rem;">Go to your admin dashboard to see them.</p>
+        <a href="/admin.html" class="btn btn-primary">Go to Admin Dashboard →</a>
+    </div>
+</div>
+
+<script type="module">
+import { db, auth } from '/js/firebase-config.js';
+import { collection, addDoc, getDocs, query, where, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+// Helper: future date from today
+function future(days, hour = 10) {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    d.setHours(hour, 0, 0, 0);
+    return Timestamp.fromDate(d);
+}
+function due(days) { return future(days - 3, 18); }
+function start(days) { return future(days - 10, 9); }
+
+const EVENTS = [
+    {
+        title: "TechFest 2025 — National Tech Symposium",
+        description: "A 2-day national-level technical symposium featuring paper presentations, hackathons, robotics challenges, and guest lectures by industry leaders from Google and Microsoft.",
+        eventDate: future(15, 9), dueDate: due(15), startDate: start(15),
+        totalSeats: 300, seatsLeft: 300, entryFee: 199,
+        imageUrl: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80"
+    },
+    {
+        title: "Cultural Fiesta — Annual Cultural Night",
+        description: "A spectacular evening of dance, drama, music and fashion. Featuring classical Bharatanatyam, western dance battles, stand-up comedy and a live band finale. Open to all students.",
+        eventDate: future(20, 18), dueDate: due(20), startDate: start(20),
+        totalSeats: 500, seatsLeft: 500, entryFee: 99,
+        imageUrl: "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&q=80"
+    },
+    {
+        title: "Code Sprint — 24-Hour Hackathon",
+        description: "Build innovative solutions to real-world problems in just 24 hours. Teams of 2-4. Prizes worth ₹50,000. Problem statements from fintech, healthcare and agriculture domains.",
+        eventDate: future(10, 8), dueDate: due(10), startDate: start(10),
+        totalSeats: 120, seatsLeft: 120, entryFee: 149,
+        imageUrl: "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=800&q=80"
+    },
+    {
+        title: "Entrepreneurship Summit 2025",
+        description: "Connect with successful startup founders, angel investors and VCs. Pitch your startup idea in the live competition. Panel discussions on funding, product-market fit, and scaling.",
+        eventDate: future(25, 10), dueDate: due(25), startDate: start(25),
+        totalSeats: 200, seatsLeft: 200, entryFee: 249,
+        imageUrl: "https://images.unsplash.com/photo-1556761175-4b46a572b786?w=800&q=80"
+    },
+    {
+        title: "Inter-College Cricket Tournament",
+        description: "T20 format cricket tournament with 12 college teams competing for the championship trophy. Knockout rounds over 3 days. Cash prizes and trophies for top 3 teams.",
+        eventDate: future(30, 7), dueDate: due(30), startDate: start(30),
+        totalSeats: 80, seatsLeft: 80, entryFee: 199,
+        imageUrl: "https://images.unsplash.com/photo-1531415074968-036ba1b575da?w=800&q=80"
+    },
+    {
+        title: "AI & Machine Learning Workshop",
+        description: "Hands-on 2-day workshop on Python, NumPy, Pandas, Scikit-learn and TensorFlow. Build your first neural network and deploy an ML model. Certificates provided. Laptops mandatory.",
+        eventDate: future(12, 9), dueDate: due(12), startDate: start(12),
+        totalSeats: 60, seatsLeft: 60, entryFee: 299,
+        imageUrl: "https://images.unsplash.com/photo-1677442135703-1787eea5ce01?w=800&q=80"
+    },
+    {
+        title: "Photography Exhibition & Competition",
+        description: "Submit your best shots in categories: Nature, Street Life, Portrait, and Abstract. Jury from the Press Club of India. Exhibition open for 3 days. Winner gets a DSLR camera.",
+        eventDate: future(18, 10), dueDate: due(18), startDate: start(18),
+        totalSeats: 150, seatsLeft: 150, entryFee: 0,
+        imageUrl: "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=800&q=80"
+    },
+    {
+        title: "Debate Championship — MUN Style",
+        description: "Model United Nations style debate on current global issues. Categories: UN Security Council, Climate Change Committee, Human Rights Council. Best delegate wins a trip to New Delhi.",
+        eventDate: future(22, 9), dueDate: due(22), startDate: start(22),
+        totalSeats: 100, seatsLeft: 100, entryFee: 149,
+        imageUrl: "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=800&q=80"
+    },
+    {
+        title: "Freshers' Welcome Party 2025",
+        description: "Welcome event exclusively for first-year students. Ice-breaker games, talent showcase, fresher titles like Mr. & Ms. Fresher, seniors performances and a grand DJ night to finish.",
+        eventDate: future(8, 17), dueDate: due(8), startDate: start(8),
+        totalSeats: 400, seatsLeft: 400, entryFee: 0,
+        imageUrl: "https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=800&q=80"
+    },
+    {
+        title: "Robotics Challenge — Line Follower & Maze Solver",
+        description: "Design, build and program robots to complete line-follower and maze-solver challenges. Both hardware and simulation tracks available. Components kit provided to registered teams.",
+        eventDate: future(35, 9), dueDate: due(35), startDate: start(35),
+        totalSeats: 80, seatsLeft: 80, entryFee: 249,
+        imageUrl: "https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=800&q=80"
+    },
+    {
+        title: "Blood Donation Camp",
+        description: "Annual blood donation drive in association with Apollo Hospitals. Free health checkup, blood group testing and certificates for all donors. Help save lives — donate blood today.",
+        eventDate: future(7, 9), dueDate: due(7), startDate: start(7),
+        totalSeats: 200, seatsLeft: 200, entryFee: 0,
+        imageUrl: "https://images.unsplash.com/photo-1615461066841-6116e61058f4?w=800&q=80"
+    },
+    {
+        title: "Web Development Bootcamp",
+        description: "3-day intensive bootcamp covering HTML, CSS, JavaScript, React and Node.js. Build a full-stack portfolio project from scratch. Industry mentors available throughout. Certificate on completion.",
+        eventDate: future(14, 9), dueDate: due(14), startDate: start(14),
+        totalSeats: 50, seatsLeft: 50, entryFee: 349,
+        imageUrl: "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?w=800&q=80"
+    },
+    {
+        title: "Inter-Department Football League",
+        description: "7-a-side football tournament among all college departments. Round-robin followed by knockout. Trophy and medals for winners. Fair play award for best-behaved team.",
+        eventDate: future(28, 7), dueDate: due(28), startDate: start(28),
+        totalSeats: 112, seatsLeft: 112, entryFee: 99,
+        imageUrl: "https://images.unsplash.com/photo-1575361204480-aadea25e6e68?w=800&q=80"
+    },
+    {
+        title: "Guest Lecture — Cybersecurity in 2025",
+        description: "Expert talk by Mr. Ramesh Nair, CISO at Infosys, covering ethical hacking, zero-day vulnerabilities, ransomware defense and career paths in cybersecurity. Q&A session included.",
+        eventDate: future(6, 11), dueDate: due(6), startDate: start(6),
+        totalSeats: 250, seatsLeft: 250, entryFee: 0,
+        imageUrl: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=800&q=80"
+    },
+    {
+        title: "Singing Competition — Sur Sangam",
+        description: "Solo and duet singing competition with categories: Classical, Semi-Classical, Bollywood and Western. Professional jury, live band accompaniment. Winner gets a recording studio session.",
+        eventDate: future(19, 16), dueDate: due(19), startDate: start(19),
+        totalSeats: 120, seatsLeft: 120, entryFee: 79,
+        imageUrl: "https://images.unsplash.com/photo-1516280440614-37939bbacd81?w=800&q=80"
+    },
+    {
+        title: "Placement Preparation Bootcamp",
+        description: "4-day intensive campus placement preparation: aptitude training, coding challenges, group discussions, mock interviews with HR professionals from TCS, Wipro and Accenture.",
+        eventDate: future(40, 9), dueDate: due(40), startDate: start(40),
+        totalSeats: 150, seatsLeft: 150, entryFee: 199,
+        imageUrl: "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=800&q=80"
+    },
+    {
+        title: "Science Exhibition — Innovate India",
+        description: "Annual science exhibition showcasing student projects in electronics, environment, biotech and space technology. Best project wins ₹25,000 funding to develop a prototype.",
+        eventDate: future(32, 10), dueDate: due(32), startDate: start(32),
+        totalSeats: 300, seatsLeft: 300, entryFee: 0,
+        imageUrl: "https://images.unsplash.com/photo-1532094349884-543559373085?w=800&q=80"
+    },
+    {
+        title: "Dance Battle — Groove Wars",
+        description: "Epic 1v1 and crew dance battle competition. Styles: Hip-Hop, Locking, Popping, Breaking and Freestyle. Judges are national-level dancers. Prize pool of ₹30,000.",
+        eventDate: future(21, 17), dueDate: due(21), startDate: start(21),
+        totalSeats: 200, seatsLeft: 200, entryFee: 129,
+        imageUrl: "https://images.unsplash.com/photo-1547153760-18fc86324498?w=800&q=80"
+    },
+    {
+        title: "Cloud Computing Workshop — AWS & Azure",
+        description: "Hands-on workshop on cloud fundamentals, EC2, S3, Lambda, Azure VMs and DevOps pipelines. AWS Educate credits provided. Ideal for final-year students targeting cloud roles.",
+        eventDate: future(16, 9), dueDate: due(16), startDate: start(16),
+        totalSeats: 60, seatsLeft: 60, entryFee: 399,
+        imageUrl: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=800&q=80"
+    },
+    {
+        title: "Quiz Fiesta — General Knowledge Championship",
+        description: "Rapid-fire general knowledge quiz covering current affairs, science, history, sports and entertainment. Teams of 3. Winners get Amazon gift vouchers worth ₹10,000.",
+        eventDate: future(9, 14), dueDate: due(9), startDate: start(9),
+        totalSeats: 180, seatsLeft: 180, entryFee: 49,
+        imageUrl: "https://images.unsplash.com/photo-1606326608606-aa0b62935f2b?w=800&q=80"
+    },
+    {
+        title: "Annual Sports Day — Track & Field",
+        description: "Full-day athletics meet with 100m, 200m, 400m, 800m, relay races, long jump, shot put and tug-of-war. Medals for top 3 in each event. Overall championship trophy for best department.",
+        eventDate: future(45, 7), dueDate: due(45), startDate: start(45),
+        totalSeats: 500, seatsLeft: 500, entryFee: 0,
+        imageUrl: "https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=800&q=80"
+    },
+    {
+        title: "Short Film Festival — Frame It",
+        description: "Submit original short films (5-15 mins) in any language. Categories: Drama, Documentary, Comedy and Animation. Jury from the Telugu Film Industry. Best film screened at a multiplex.",
+        eventDate: future(38, 11), dueDate: due(38), startDate: start(38),
+        totalSeats: 100, seatsLeft: 100, entryFee: 149,
+        imageUrl: "https://images.unsplash.com/photo-1478720568477-152d9b164e26?w=800&q=80"
+    },
+    {
+        title: "Yoga & Wellness Day",
+        description: "A rejuvenating day of yoga, meditation, breathing exercises and nutrition talks. Led by certified yoga instructor from the Art of Living Foundation. Mats provided. Open to all.",
+        eventDate: future(11, 6), dueDate: due(11), startDate: start(11),
+        totalSeats: 150, seatsLeft: 150, entryFee: 0,
+        imageUrl: "https://images.unsplash.com/photo-1545205597-3d9d02c29597?w=800&q=80"
+    },
+    {
+        title: "E-Sports Tournament — BGMI & Valorant",
+        description: "Online and LAN e-sports tournament for BGMI (squads) and Valorant (5v5). Live streamed on college YouTube channel. Prize pool of ₹40,000. PC and mobile categories separate.",
+        eventDate: future(17, 12), dueDate: due(17), startDate: start(17),
+        totalSeats: 160, seatsLeft: 160, entryFee: 199,
+        imageUrl: "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80"
+    },
+    {
+        title: "Literary Fest — Words & Worlds",
+        description: "A celebration of literature featuring poetry slam, creative writing competition, book reviews and an author talk. Special session on how to get published. Open mic for poets.",
+        eventDate: future(26, 10), dueDate: due(26), startDate: start(26),
+        totalSeats: 200, seatsLeft: 200, entryFee: 0,
+        imageUrl: "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=800&q=80"
+    },
+    {
+        title: "Data Science & Analytics Seminar",
+        description: "Full-day seminar on data analytics, Power BI, Tableau, SQL and Python for data science. Live case studies from real industry datasets. Networking lunch with data professionals included.",
+        eventDate: future(33, 9), dueDate: due(33), startDate: start(33),
+        totalSeats: 100, seatsLeft: 100, entryFee: 249,
+        imageUrl: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80"
+    },
+    {
+        title: "Fashion Show — Style Saga 2025",
+        description: "Annual fashion show with themes: Traditional India, Futuristic Wear and Sustainable Fashion. Professional makeup artists and choreographers. Audience voting and jury awards.",
+        eventDate: future(23, 17), dueDate: due(23), startDate: start(23),
+        totalSeats: 300, seatsLeft: 300, entryFee: 129,
+        imageUrl: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80"
+    },
+    {
+        title: "Alumni Meet & Career Networking Night",
+        description: "Annual alumni meet connecting current students with graduates working at top companies like Google, Amazon, Deloitte and Goldman Sachs. Speed networking, mentorship sessions and dinner.",
+        eventDate: future(50, 18), dueDate: due(50), startDate: start(50),
+        totalSeats: 250, seatsLeft: 250, entryFee: 299,
+        imageUrl: "https://images.unsplash.com/photo-1475721027785-f74eccf877e2?w=800&q=80"
+    }
+];
+
+function log(msg, type = 'inf') {
+    const logEl = document.getElementById('log');
+    logEl.style.display = 'block';
+    const line = document.createElement('div');
+    line.className = `log-line log-${type}`;
+    line.textContent = msg;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setProgress(pct) {
+    document.getElementById('progressFill').style.width = pct + '%';
+}
+
+window.startSeed = async function() {
+    const btn = document.getElementById('seedBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Seeding events...';
+
+    // Check auth
+    const user = JSON.parse(localStorage.getItem('user_data') || 'null');
+    if (!user || user.role !== 'admin') {
+        alert('You must be logged in as admin first!\n\nGo to /index.html and log in as admin, then come back here.');
+        btn.disabled = false;
+        btn.innerHTML = '🚀 Seed All Events Now';
+        return;
+    }
+
+    log(`✅ Logged in as admin: ${user.name}`, 'ok');
+    log(`📦 Seeding ${EVENTS.length} events...`, 'inf');
+
+    let success = 0;
+    let failed = 0;
+
+    for (let i = 0; i < EVENTS.length; i++) {
+        const ev = EVENTS[i];
+        try {
+            await addDoc(collection(db, 'events'), {
+                ...ev,
+                createdBy: user.uid,
+                createdAt: serverTimestamp()
+            });
+            success++;
+            log(`✅ [${i+1}/${EVENTS.length}] ${ev.title}`, 'ok');
+        } catch (err) {
+            failed++;
+            log(`❌ [${i+1}/${EVENTS.length}] FAILED: ${ev.title} — ${err.message}`, 'err');
+        }
+        setProgress(Math.round(((i + 1) / EVENTS.length) * 100));
+        // Small delay to avoid Firestore rate limits
+        await new Promise(r => setTimeout(r, 120));
+    }
+
+    log(`\n🎉 Done! ${success} events added, ${failed} failed.`, 'ok');
+    setProgress(100);
+    btn.style.display = 'none';
+    document.getElementById('doneMsg').style.display = 'block';
+};
+</script>
+</body>
+</html>
